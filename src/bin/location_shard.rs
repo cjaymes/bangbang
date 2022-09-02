@@ -96,7 +96,8 @@ fn create(state: &State<AppState>, request: Json<CreateRequest>) -> Result<Json<
     let arc = state.objects.clone();
     let mut objects = arc.write()
     .expect("Unable to get write lock on state");
-    objects.insert(id, request.location);
+    objects.insert(id, request.location)
+    .expect("Object insert failed");
 
     Ok(Json::from(CreateResponse {
         version: Version(1),
@@ -229,191 +230,182 @@ fn rocket() -> _ {
 }
 
 #[cfg(test)]
-const TEST_ID: &str = "f1cc50ec66f14e9e87e2ed0ae8607b9f";
+mod test {
+    use super::*;
 
-#[cfg(test)]
-#[test]
-fn test_create() {
-    use rocket::{local::blocking::Client, http::{ContentType, Status}, serde::json::serde_json};
+    use bangbang::geometry::Shape3D;
+    use rocket::http::ContentType;
+    use rocket::http::uri::Uri;
+    use rocket::local::blocking::Client;
+    use rocket::http::Status;
+    use rocket::serde::json::serde_json;
+    use uuid::Uuid;
 
-    let client = Client::tracked(rocket())
-    .expect("valid rocket instance");
-    let req = CreateRequest {
-        version: Version(1),
-        object_id: TEST_ID.to_string(),
-        location: Vertex3D { x: 0.0, y: 0.0, z: 0.0 },
-    };
-    let response = client.post(uri!("/"))
-        .header(ContentType::JSON)
-        .body(serde_json::to_string(&req).unwrap())
-        .dispatch();
-    assert_eq!(response.status(), Status::Ok);
-    assert_eq!(response.content_type().unwrap(), ContentType::JSON);
-    assert_eq!(response.into_string().unwrap(), serde_json::to_string(&CreateResponse {
-        version: Version(1),
-        object_id: TEST_ID.to_string(),
-        location: Vertex3D { x: 0.0, y: 0.0, z: 0.0 },
-    }).unwrap());
-}
+    const TEST_ID: &str = "f1cc50ec66f14e9e87e2ed0ae8607b9f";
 
-#[cfg(test)]
-#[test]
-fn test_index() {
-    use rocket::{local::blocking::Client, http::{ContentType, Status}, serde::json::serde_json};
+    #[test]
+    fn create() {
+        let client = Client::tracked(rocket())
+        .expect("valid rocket instance");
+        let req = CreateRequest {
+            version: Version(1),
+            object_id: TEST_ID.to_string(),
+            location: Vertex3D { x: 0.0, y: 0.0, z: 0.0 },
+        };
+        let response = client.post(uri!("/"))
+            .header(ContentType::JSON)
+            .body(serde_json::to_string(&req).unwrap())
+            .dispatch();
+        assert_eq!(response.status(), Status::Ok);
+        assert_eq!(response.content_type().unwrap(), ContentType::JSON);
+        assert_eq!(response.into_string().unwrap(), serde_json::to_string(&CreateResponse {
+            version: Version(1),
+            object_id: TEST_ID.to_string(),
+            location: Vertex3D { x: 0.0, y: 0.0, z: 0.0 },
+        }).unwrap());
+    }
 
-    let r = rocket();
+    #[test]
+    fn index() {
+        let r = rocket();
 
-    // set up state
-    let state = r.state::<AppState>().unwrap();
-    let objects = state.objects.clone();
-    objects.write().unwrap().insert(Uuid::try_parse(&TEST_ID.to_string()).unwrap(), Vertex3D {
-        x: 0.0,
-        y: 0.0,
-        z: 0.0,
-    });
+        // set up state
+        let state = r.state::<AppState>().unwrap();
+        let objects = state.objects.clone();
+        objects.write().unwrap().insert(Uuid::try_parse(&TEST_ID.to_string()).unwrap(), Vertex3D {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+        });
 
-    let client = Client::tracked(r)
-    .expect("valid rocket instance");
-    let response = client.get(uri!("/0.0/0.0/0.0/100.0"))
-        .header(ContentType::JSON)
-        .dispatch();
-    assert_eq!(response.status(), Status::Ok);
-    assert_eq!(response.content_type().unwrap(), ContentType::JSON);
-    assert_eq!(response.into_string().unwrap(), serde_json::to_string(&IndexResponse {
-        version: Version(1),
-        object_ids: Vec::from([TEST_ID.to_string()]),
-        search: Shape3D::Sphere {
-            center: Vertex3D { x: 0.0, y: 0.0, z: 0.0 },
-            radius: 100.0,
-        },
-    }).unwrap());
-}
+        let client = Client::tracked(r)
+        .expect("valid rocket instance");
+        let response = client.get(uri!("/0.0/0.0/0.0/100.0"))
+            .header(ContentType::JSON)
+            .dispatch();
+        assert_eq!(response.status(), Status::Ok);
+        assert_eq!(response.content_type().unwrap(), ContentType::JSON);
+        assert_eq!(response.into_string().unwrap(), serde_json::to_string(&IndexResponse {
+            version: Version(1),
+            object_ids: Vec::from([TEST_ID.to_string()]),
+            search: Shape3D::Sphere {
+                center: Vertex3D { x: 0.0, y: 0.0, z: 0.0 },
+                radius: 100.0,
+            },
+        }).unwrap());
+    }
 
-#[cfg(test)]
-#[test]
-fn test_read() {
-    use rocket::{local::blocking::Client, http::{uri::Uri, ContentType, Status}, serde::json::serde_json};
+    #[test]
+    fn read() {
+        let r = rocket();
 
-    let r = rocket();
+        // set up state
+        let state = r.state::<AppState>().unwrap();
+        let objects = state.objects.clone();
+        objects.write().unwrap().insert(Uuid::try_parse(&TEST_ID.to_string()).unwrap(), Vertex3D {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+        });
 
-    // set up state
-    let state = r.state::<AppState>().unwrap();
-    let objects = state.objects.clone();
-    objects.write().unwrap().insert(Uuid::try_parse(&TEST_ID.to_string()).unwrap(), Vertex3D {
-        x: 0.0,
-        y: 0.0,
-        z: 0.0,
-    });
+        let client = Client::tracked(r)
+        .expect("valid rocket instance");
+        let path = format!("/{}", TEST_ID.to_string());
+        let response = client.get(Uri::parse_any(path.as_str()).unwrap())
+            .header(ContentType::JSON)
+            .dispatch();
+        assert_eq!(response.status(), Status::Ok);
+        assert_eq!(response.content_type().unwrap(), ContentType::JSON);
+        assert_eq!(response.into_string().unwrap(), serde_json::to_string(&ReadResponse {
+            version:Version(1),
+            object_id:TEST_ID.to_string(),
+            location: Vertex3D { x: 0.0, y: 0.0, z: 0.0 },
+        }).unwrap());
+    }
 
-    let client = Client::tracked(r)
-    .expect("valid rocket instance");
-    let path = format!("/{}", TEST_ID.to_string());
-    let response = client.get(Uri::parse_any(path.as_str()).unwrap())
-        .header(ContentType::JSON)
-        .dispatch();
-    assert_eq!(response.status(), Status::Ok);
-    assert_eq!(response.content_type().unwrap(), ContentType::JSON);
-    assert_eq!(response.into_string().unwrap(), serde_json::to_string(&ReadResponse {
-        version:Version(1),
-        object_id:TEST_ID.to_string(),
-        location: Vertex3D { x: 0.0, y: 0.0, z: 0.0 },
-    }).unwrap());
-}
+    #[test]
+    fn read_bad_id() {
+        let r = rocket();
 
-#[cfg(test)]
-#[test]
-fn test_read_bad_id() {
-    use rocket::{local::blocking::Client, http::{uri::Uri, ContentType, Status}};
+        let client = Client::tracked(r)
+        .expect("valid rocket instance");
+        let path = "/blah";
+        let response = client.get(Uri::parse_any(path).unwrap())
+            .header(ContentType::JSON)
+            .dispatch();
+        assert_eq!(response.status(), Status::InternalServerError);
+    }
 
-    let r = rocket();
+    #[test]
+    fn update() {
+        let r = rocket();
 
-    let client = Client::tracked(r)
-    .expect("valid rocket instance");
-    let path = "/blah";
-    let response = client.get(Uri::parse_any(path).unwrap())
-        .header(ContentType::JSON)
-        .dispatch();
-    assert_eq!(response.status(), Status::InternalServerError);
-}
+        // set up state
+        let state = r.state::<AppState>().unwrap();
+        let objects = state.objects.clone();
+        objects.write().unwrap().insert(Uuid::try_parse(&TEST_ID.to_string()).unwrap(), Vertex3D {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+        });
 
-#[cfg(test)]
-#[test]
-fn test_update() {
-    use rocket::{local::blocking::Client, http::{uri::Uri, ContentType, Status}, serde::json::serde_json};
+        let req = UpdateRequest {
+            version: Version(1),
+            location: Vertex3D { x: 1.0, y: 1.0, z: 1.0 },
+        };
+        let client = Client::tracked(r)
+        .expect("valid rocket instance");
+        let path = format!("/{}", TEST_ID.to_string());
+        let response = client.put(Uri::parse_any(path.as_str()).unwrap())
+            .header(ContentType::JSON)
+            .body(serde_json::to_string(&req).unwrap())
+            .dispatch();
+        assert_eq!(response.status(), Status::Ok);
+        assert_eq!(response.content_type().unwrap(), ContentType::JSON);
+        assert_eq!(response.into_string().unwrap(), serde_json::to_string(&UpdateResponse {
+            version:Version(1),
+            object_id:TEST_ID.to_string(),
+            location: Vertex3D { x: 1.0, y: 1.0, z: 1.0 },
+        }).unwrap());
+    }
 
-    let r = rocket();
+    #[test]
+    fn delete() {
+        let r = rocket();
 
-    // set up state
-    let state = r.state::<AppState>().unwrap();
-    let objects = state.objects.clone();
-    objects.write().unwrap().insert(Uuid::try_parse(&TEST_ID.to_string()).unwrap(), Vertex3D {
-        x: 0.0,
-        y: 0.0,
-        z: 0.0,
-    });
+        // set up state
+        let state = r.state::<AppState>().unwrap();
+        let objects = state.objects.clone();
+        objects.write().unwrap().insert(Uuid::try_parse(&TEST_ID.to_string()).unwrap(), Vertex3D {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+        });
 
-    let req = UpdateRequest {
-        version: Version(1),
-        location: Vertex3D { x: 1.0, y: 1.0, z: 1.0 },
-    };
-    let client = Client::tracked(r)
-    .expect("valid rocket instance");
-    let path = format!("/{}", TEST_ID.to_string());
-    let response = client.put(Uri::parse_any(path.as_str()).unwrap())
-        .header(ContentType::JSON)
-        .body(serde_json::to_string(&req).unwrap())
-        .dispatch();
-    assert_eq!(response.status(), Status::Ok);
-    assert_eq!(response.content_type().unwrap(), ContentType::JSON);
-    assert_eq!(response.into_string().unwrap(), serde_json::to_string(&UpdateResponse {
-        version:Version(1),
-        object_id:TEST_ID.to_string(),
-        location: Vertex3D { x: 1.0, y: 1.0, z: 1.0 },
-    }).unwrap());
-}
+        let client = Client::tracked(r)
+        .expect("valid rocket instance");
+        let path = format!("/{}", TEST_ID.to_string());
+        let response = client.delete(Uri::parse_any(path.as_str()).unwrap())
+            .header(ContentType::JSON)
+            .dispatch();
+        assert_eq!(response.status(), Status::Ok);
+        assert_eq!(response.content_type().unwrap(), ContentType::JSON);
+        assert_eq!(response.into_string().unwrap(), serde_json::to_string(&DeleteResponse {
+            version: Version(1),
+            object_id: TEST_ID.to_string(),
+        }).unwrap());
+    }
 
-#[cfg(test)]
-#[test]
-fn test_delete() {
-    use rocket::{local::blocking::Client, http::{uri::Uri, ContentType, Status}, serde::json::serde_json};
+    #[test]
+    fn delete_bad_id() {
+        let r = rocket();
 
-    let r = rocket();
-
-    // set up state
-    let state = r.state::<AppState>().unwrap();
-    let objects = state.objects.clone();
-    objects.write().unwrap().insert(Uuid::try_parse(&TEST_ID.to_string()).unwrap(), Vertex3D {
-        x: 0.0,
-        y: 0.0,
-        z: 0.0,
-    });
-
-    let client = Client::tracked(r)
-    .expect("valid rocket instance");
-    let path = format!("/{}", TEST_ID.to_string());
-    let response = client.delete(Uri::parse_any(path.as_str()).unwrap())
-        .header(ContentType::JSON)
-        .dispatch();
-    assert_eq!(response.status(), Status::Ok);
-    assert_eq!(response.content_type().unwrap(), ContentType::JSON);
-    assert_eq!(response.into_string().unwrap(), serde_json::to_string(&DeleteResponse {
-        version: Version(1),
-        object_id: TEST_ID.to_string(),
-    }).unwrap());
-}
-
-#[cfg(test)]
-#[test]
-fn test_delete_bad_id() {
-    use rocket::{local::blocking::Client, http::{uri::Uri, ContentType, Status}};
-
-    let r = rocket();
-
-    let client = Client::tracked(r)
-    .expect("valid rocket instance");
-    let path = "/blah";
-    let response = client.delete(Uri::parse_any(path).unwrap())
-        .header(ContentType::JSON)
-        .dispatch();
-    assert_eq!(response.status(), Status::InternalServerError);
+        let client = Client::tracked(r)
+        .expect("valid rocket instance");
+        let path = "/blah";
+        let response = client.delete(Uri::parse_any(path).unwrap())
+            .header(ContentType::JSON)
+            .dispatch();
+        assert_eq!(response.status(), Status::InternalServerError);
+    }
 }
