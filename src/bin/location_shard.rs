@@ -3,6 +3,7 @@ extern crate rocket;
 extern crate uuid;
 use bangbang::geometry::Shape3D;
 use bangbang::geometry::Vertex3D;
+use rocket::response::status::NotFound;
 use rocket::serde::json::Json;
 use rocket::serde::Deserialize;
 use rocket::serde::Serialize;
@@ -79,9 +80,10 @@ struct DeleteResponse {
 }
 
 #[post("/", format = "application/json", data = "<request>")]
-fn create(state: &State<AppState>, request: Json<CreateRequest>) -> Json<CreateResponse> {
+fn create(state: &State<AppState>, request: Json<CreateRequest>) -> Result<Json<CreateResponse>,NotFound<String>> {
     // parse id
-    let id = Uuid::try_parse(request.object_id.as_str()).unwrap();
+    let id = Uuid::try_parse(request.object_id.as_str())
+    .expect("Unable to parse id");
     // parse point
 
     println!(
@@ -91,68 +93,85 @@ fn create(state: &State<AppState>, request: Json<CreateRequest>) -> Json<CreateR
     );
 
     // start tracking object _uuid at given location
-    let objects = state.objects.clone();
-    objects.write().unwrap().insert(id, request.location);
+    let arc = state.objects.clone();
+    let mut objects = arc.write()
+    .expect("Unable to get write lock on state");
+    objects.insert(id, request.location)
+    .expect("Object insert failed");
 
-    Json::from(CreateResponse {
+    Ok(Json::from(CreateResponse {
         version: Version(1),
         object_id: id.as_simple().to_string(),
         location: request.location,
-    })
+    }))
 }
 
 #[get("/<x>/<y>/<z>/<radius>")]
-fn index(state: &State<AppState>, x: f32, y: f32, z: f32, radius: f32) -> Json<IndexResponse> {
+fn index(state: &State<AppState>, x: f32, y: f32, z: f32, radius: f32) -> Result<Json<IndexResponse>,NotFound<String>> {
     let sph = Shape3D::Sphere { center: Vertex3D { x, y, z }, radius };
     let pt: Vertex3D = Vertex3D { x, y, z };
     println!("INDEX center={}, r={}", pt.to_string(), radius);
 
     let mut object_ids = Vec::new();
-    let _state = state.objects.clone();
-    let objects = _state.read().unwrap();
+    let arc = state.objects.clone();
+    let objects = arc.read()
+    .expect("Unable to get read lock on state");
     // loop through objects and test within radius of x,y,z/r and add to return
     for k in objects.keys() {
-        let obj_point = objects.get(k).unwrap();
+        let obj_point = objects.get(k)
+        .expect(format!("Unable to find vertex for {}", k.to_string()).as_str());
         println!("Checking object {} at {}", k, obj_point.to_string());
 
+        // TODO check object bbox or cylinder
         if obj_point.is_on_or_inside(&sph) {
             object_ids.push(k.simple().to_string().to_owned());
         }
     }
-    // TODO check object bbox or cylinder
+
+    if object_ids.len() <= 0 {
+        return Err(NotFound("No matching objects found".to_string()));
+    }
+
     // TODO: long polling/pubsub
 
-    Json::from(IndexResponse {
+    Ok(Json::from(IndexResponse {
         version: Version(1),
         search: sph,
         object_ids: object_ids,
-    })
+    }))
 }
 
 #[get("/<id>")]
-fn read(state: &State<AppState>, id: &str) -> Json<ReadResponse> {
+fn read(state: &State<AppState>, id: &str) -> Result<Json<ReadResponse>,NotFound<String>> {
     // parse id
-    let id = Uuid::try_parse(id).unwrap();
+    let id = Uuid::try_parse(id)
+    .expect("Unable to parse id");
 
     println!("READ {}", id.as_simple().to_string());
 
     // TODO: find location of object and return
-    let _state = state.objects.clone();
-    let objects = _state.read().unwrap();
-    let pt = objects[&id];
-    // TODO: long polling/pubsub
+    let arc = state.objects.clone();
+    let objects = arc.read()
+    .expect("Unable to get read lock on state");
+    let pt = if let Some(pt) = objects.get(&id) {
+        pt
+    } else {
+        return Err(NotFound("Couldn't find object".to_string()));
+    };
 
-    Json::from(ReadResponse {
+    // TODO: long polling/pubsub
+    Ok(Json::from(ReadResponse {
         version: Version(1),
-        location: pt,
+        location: *pt,
         object_id: id.as_simple().to_string()
-    })
+    }))
 }
 
 #[put("/<id>", format = "application/json", data = "<request>")]
-fn update(state: &State<AppState>, id: &str, request: Json<UpdateRequest>) -> Json<UpdateResponse> {
+fn update(state: &State<AppState>, id: &str, request: Json<UpdateRequest>) -> Result<Json<UpdateResponse>,NotFound<String>> {
     // parse id
-    let id = Uuid::try_parse(id).unwrap();
+    let id = Uuid::try_parse(id)
+    .expect("Unable to parse id");
 
     println!(
         "UPDATE {} at {}",
@@ -160,35 +179,45 @@ fn update(state: &State<AppState>, id: &str, request: Json<UpdateRequest>) -> Js
         request.location.to_string()
     );
 
-    let objects = state.objects.clone();
-    // TODO: update object _uuid location
-    // TODO: remove object from location vector
-    // TODO: create new location vector if doesn't exist
-    // TODO: add object to new location vector
-    objects.write().unwrap().insert(id, request.location);
+    let arc = state.objects.clone();
+    let mut objects = arc.write()
+    .expect("Unable to get read lock on state");
 
-    Json::from(UpdateResponse {
+    if !objects.contains_key(&id) {
+        return Err(NotFound("Object was not found".to_string()));
+    }
+
+
+    objects.insert(id, request.location)
+    .expect("Object update failed");
+
+    Ok(Json::from(UpdateResponse {
         version: Version(1),
         location: request.location,
         object_id: id.as_simple().to_string()
-    })
+    }))
 }
 
 #[delete("/<id>")]
-fn delete(state: &State<AppState>, id: &str) -> Json<DeleteResponse> {
+fn delete(state: &State<AppState>, id: &str) -> Result<Json<DeleteResponse>,NotFound<String>> {
     // parse id
-    let id = Uuid::try_parse(id).unwrap();
+    let id = Uuid::try_parse(id)
+    .expect("Unable to parse id");
 
     println!("DELETE {}", id.as_simple().to_string());
 
     // stop tracking object _uuid
-    let objects = state.objects.clone();
-    objects.write().unwrap().remove(&id);
+    let arc = state.objects.clone();
+    let mut objects = arc.write()
+        .expect("Unable to get read lock on state");
+    if objects.remove(&id).is_none() {
+        return Err(NotFound("Couldn't find object".to_string()));
+    }
 
-    Json::from(DeleteResponse {
+    Ok(Json::from(DeleteResponse {
         version: Version(1),
         object_id: id.as_simple().to_string()
-    })
+    }))
 }
 
 #[launch]
@@ -202,18 +231,8 @@ fn rocket() -> _ {
 
 #[cfg(test)]
 mod test {
-    use super::Vertex3D;
+    use super::*;
 
-    use crate::AppState;
-    use crate::UpdateRequest;
-    use crate::UpdateResponse;
-
-    use super::CreateResponse;
-    use super::IndexResponse;
-    use super::ReadResponse;
-    use super::DeleteResponse;
-
-    use super::rocket;
     use bangbang::geometry::Shape3D;
     use rocket::http::ContentType;
     use rocket::http::uri::Uri;
@@ -221,14 +240,13 @@ mod test {
     use rocket::http::Status;
     use rocket::serde::json::serde_json;
     use uuid::Uuid;
-    use super::CreateRequest;
-    use super::Version;
 
     const TEST_ID: &str = "f1cc50ec66f14e9e87e2ed0ae8607b9f";
 
     #[test]
     fn create() {
-        let client = Client::tracked(rocket()).expect("valid rocket instance");
+        let client = Client::tracked(rocket())
+        .expect("valid rocket instance");
         let req = CreateRequest {
             version: Version(1),
             object_id: TEST_ID.to_string(),
@@ -260,7 +278,8 @@ mod test {
             z: 0.0,
         });
 
-        let client = Client::tracked(r).expect("valid rocket instance");
+        let client = Client::tracked(r)
+        .expect("valid rocket instance");
         let response = client.get(uri!("/0.0/0.0/0.0/100.0"))
             .header(ContentType::JSON)
             .dispatch();
@@ -289,7 +308,8 @@ mod test {
             z: 0.0,
         });
 
-        let client = Client::tracked(r).expect("valid rocket instance");
+        let client = Client::tracked(r)
+        .expect("valid rocket instance");
         let path = format!("/{}", TEST_ID.to_string());
         let response = client.get(Uri::parse_any(path.as_str()).unwrap())
             .header(ContentType::JSON)
@@ -301,6 +321,19 @@ mod test {
             object_id:TEST_ID.to_string(),
             location: Vertex3D { x: 0.0, y: 0.0, z: 0.0 },
         }).unwrap());
+    }
+
+    #[test]
+    fn read_bad_id() {
+        let r = rocket();
+
+        let client = Client::tracked(r)
+        .expect("valid rocket instance");
+        let path = "/blah";
+        let response = client.get(Uri::parse_any(path).unwrap())
+            .header(ContentType::JSON)
+            .dispatch();
+        assert_eq!(response.status(), Status::InternalServerError);
     }
 
     #[test]
@@ -320,7 +353,8 @@ mod test {
             version: Version(1),
             location: Vertex3D { x: 1.0, y: 1.0, z: 1.0 },
         };
-        let client = Client::tracked(r).expect("valid rocket instance");
+        let client = Client::tracked(r)
+        .expect("valid rocket instance");
         let path = format!("/{}", TEST_ID.to_string());
         let response = client.put(Uri::parse_any(path.as_str()).unwrap())
             .header(ContentType::JSON)
@@ -348,7 +382,8 @@ mod test {
             z: 0.0,
         });
 
-        let client = Client::tracked(r).expect("valid rocket instance");
+        let client = Client::tracked(r)
+        .expect("valid rocket instance");
         let path = format!("/{}", TEST_ID.to_string());
         let response = client.delete(Uri::parse_any(path.as_str()).unwrap())
             .header(ContentType::JSON)
@@ -359,5 +394,18 @@ mod test {
             version: Version(1),
             object_id: TEST_ID.to_string(),
         }).unwrap());
+    }
+
+    #[test]
+    fn delete_bad_id() {
+        let r = rocket();
+
+        let client = Client::tracked(r)
+        .expect("valid rocket instance");
+        let path = "/blah";
+        let response = client.delete(Uri::parse_any(path).unwrap())
+            .header(ContentType::JSON)
+            .dispatch();
+        assert_eq!(response.status(), Status::InternalServerError);
     }
 }
