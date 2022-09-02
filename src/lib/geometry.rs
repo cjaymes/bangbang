@@ -16,6 +16,65 @@ pub struct Vertex3D {
     pub z: f32,
 }
 
+impl Vertex3D {
+    pub fn to_string(&self) -> String {
+        let mut s: String = self.x.to_string().to_owned();
+        s.push_str(", ");
+        s.push_str(&self.y.to_string().to_owned());
+        s.push_str(", ");
+        s.push_str(&self.z.to_string().to_owned());
+        s
+    }
+
+    pub fn is_inside(&self, s: &Shape3D) -> bool {
+        match s {
+            Shape3D::Sphere { center, radius } => {
+                let x1 = std::primitive::f32::powf(self.x - center.x, 2.0);
+                let y1 = std::primitive::f32::powf(self.y - center.y, 2.0);
+                let z1 = std::primitive::f32::powf(self.z - center.z, 2.0);
+                (x1 + y1 + z1) < (radius * radius)
+            },
+            _ => panic!("Unimplemented")
+        }
+    }
+
+    pub fn is_on(&self, s: &Shape3D) -> bool {
+        match s {
+            Shape3D::Sphere { center, radius } => {
+                let x1 = std::primitive::f32::powf(self.x - center.x, 2.0);
+                let y1 = std::primitive::f32::powf(self.y - center.y, 2.0);
+                let z1 = std::primitive::f32::powf(self.z - center.z, 2.0);
+                (x1 + y1 + z1) == (radius * radius)
+            },
+            _ => panic!("Unimplemented")
+        }
+    }
+
+    pub fn is_on_or_inside(&self, s: &Shape3D) -> bool {
+        match s {
+            Shape3D::Sphere { center, radius } => {
+                let x1 = std::primitive::f32::powf(self.x - center.x, 2.0);
+                let y1 = std::primitive::f32::powf(self.y - center.y, 2.0);
+                let z1 = std::primitive::f32::powf(self.z - center.z, 2.0);
+                (x1 + y1 + z1) <= (radius * radius)
+            },
+            _ => panic!("Unimplemented")
+        }
+    }
+
+    pub fn is_outside(&self, s: &Shape3D) -> bool {
+        match s {
+            Shape3D::Sphere{ center, radius} => {
+                let x1 = std::primitive::f32::powf(self.x - center.x, 2.0);
+                let y1 = std::primitive::f32::powf(self.y - center.y, 2.0);
+                let z1 = std::primitive::f32::powf(self.z - center.z, 2.0);
+                (x1 + y1 + z1) > (radius * radius)
+            },
+            _ => panic!("Unimplemented")
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(tag = "type")]
 pub enum Shape2D {
@@ -161,65 +220,6 @@ impl Shape3D {
             },
 
             _ => panic!("Unimplemented"),
-        }
-    }
-}
-
-impl Vertex3D {
-    pub fn to_string(&self) -> String {
-        let mut s: String = self.x.to_string().to_owned();
-        s.push_str(", ");
-        s.push_str(&self.y.to_string().to_owned());
-        s.push_str(", ");
-        s.push_str(&self.z.to_string().to_owned());
-        s
-    }
-
-    pub fn is_inside(&self, s: &Shape3D) -> bool {
-        match s {
-            Shape3D::Sphere { center, radius } => {
-                let x1 = std::primitive::f32::powf(self.x - center.x, 2.0);
-                let y1 = std::primitive::f32::powf(self.y - center.y, 2.0);
-                let z1 = std::primitive::f32::powf(self.z - center.z, 2.0);
-                (x1 + y1 + z1) < (radius * radius)
-            },
-            _ => panic!("Unimplemented")
-        }
-    }
-
-    pub fn is_on(&self, s: &Shape3D) -> bool {
-        match s {
-            Shape3D::Sphere { center, radius } => {
-                let x1 = std::primitive::f32::powf(self.x - center.x, 2.0);
-                let y1 = std::primitive::f32::powf(self.y - center.y, 2.0);
-                let z1 = std::primitive::f32::powf(self.z - center.z, 2.0);
-                (x1 + y1 + z1) == (radius * radius)
-            },
-            _ => panic!("Unimplemented")
-        }
-    }
-
-    pub fn is_on_or_inside(&self, s: &Shape3D) -> bool {
-        match s {
-            Shape3D::Sphere { center, radius } => {
-                let x1 = std::primitive::f32::powf(self.x - center.x, 2.0);
-                let y1 = std::primitive::f32::powf(self.y - center.y, 2.0);
-                let z1 = std::primitive::f32::powf(self.z - center.z, 2.0);
-                (x1 + y1 + z1) <= (radius * radius)
-            },
-            _ => panic!("Unimplemented")
-        }
-    }
-
-    pub fn is_outside(&self, s: &Shape3D) -> bool {
-        match s {
-            Shape3D::Sphere{ center, radius} => {
-                let x1 = std::primitive::f32::powf(self.x - center.x, 2.0);
-                let y1 = std::primitive::f32::powf(self.y - center.y, 2.0);
-                let z1 = std::primitive::f32::powf(self.z - center.z, 2.0);
-                (x1 + y1 + z1) > (radius * radius)
-            },
-            _ => panic!("Unimplemented")
         }
     }
 }
