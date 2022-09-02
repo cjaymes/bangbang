@@ -96,8 +96,7 @@ fn create(state: &State<AppState>, request: Json<CreateRequest>) -> Result<Json<
     let arc = state.objects.clone();
     let mut objects = arc.write()
     .expect("Unable to get write lock on state");
-    objects.insert(id, request.location)
-    .expect("Object insert failed");
+    objects.insert(id, request.location);
 
     Ok(Json::from(CreateResponse {
         version: Version(1),
