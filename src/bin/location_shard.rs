@@ -3,6 +3,7 @@ extern crate rocket;
 extern crate uuid;
 use bangbang::geometry::Shape3D;
 use bangbang::geometry::Vertex3D;
+use bangbang::logger_fairing::Logger;
 use rocket::response::status::NotFound;
 use rocket::serde::json::Json;
 use rocket::serde::Deserialize;
@@ -225,6 +226,7 @@ fn rocket() -> _ {
         .manage(AppState {
             objects: Arc::new(RwLock::new(HashMap::new())),
         })
+        .attach(Logger {})
         .mount("/", routes![create, index, read, update, delete])
 }
 
