@@ -14,22 +14,14 @@ use std::sync::Arc;
 use std::sync::RwLock;
 use uuid::Uuid;
 
-#[derive(Serialize, Deserialize, Debug)]
-struct Version(u32);
-impl Default for Version {
-    fn default() -> Self {
-        Version(1)
-    }
-}
-
 struct AppState {
-    objects: Arc<RwLock<HashMap<Uuid, bangbang::geometry::Vertex3D>>>,
+    objects: Arc<RwLock<HashMap<Uuid, Vertex3D>>>,
 }
 
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "type")]
 struct CreateRequest {
-    version: Version,
+    version: u32,
     object_id: String,
     location: Vertex3D,
 }
@@ -37,7 +29,7 @@ struct CreateRequest {
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "type")]
 struct CreateResponse {
-    version: Version,
+    version: u32,
     object_id: String,
     location: Vertex3D,
 }
@@ -45,7 +37,7 @@ struct CreateResponse {
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "type")]
 struct IndexResponse {
-    version: Version,
+    version: u32,
     search: Shape3D,
     object_ids: Vec<String>,
 }
@@ -53,7 +45,7 @@ struct IndexResponse {
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "type")]
 struct ReadResponse {
-    version: Version,
+    version: u32,
     location: Vertex3D,
     object_id: String,
 }
@@ -61,14 +53,14 @@ struct ReadResponse {
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "type")]
 struct UpdateRequest {
-    version: Version,
+    version: u32,
     location: Vertex3D,
 }
 
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "type")]
 struct UpdateResponse {
-    version: Version,
+    version: u32,
     object_id: String,
     location: Vertex3D,
 }
@@ -76,7 +68,7 @@ struct UpdateResponse {
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "type")]
 struct DeleteResponse {
-    version: Version,
+    version: u32,
     object_id: String,
 }
 
@@ -100,7 +92,7 @@ fn create(state: &State<AppState>, request: Json<CreateRequest>) -> Result<Json<
     objects.insert(id, request.location);
 
     Ok(Json::from(CreateResponse {
-        version: Version(1),
+        version: 1,
         object_id: id.as_simple().to_string(),
         location: request.location,
     }))
@@ -135,7 +127,7 @@ fn index(state: &State<AppState>, x: f32, y: f32, z: f32, radius: f32) -> Result
     // TODO: long polling/pubsub
 
     Ok(Json::from(IndexResponse {
-        version: Version(1),
+        version: 1,
         search: sph,
         object_ids: object_ids,
     }))
@@ -161,7 +153,7 @@ fn read(state: &State<AppState>, id: &str) -> Result<Json<ReadResponse>,NotFound
 
     // TODO: long polling/pubsub
     Ok(Json::from(ReadResponse {
-        version: Version(1),
+        version: 1,
         location: *pt,
         object_id: id.as_simple().to_string()
     }))
@@ -192,7 +184,7 @@ fn update(state: &State<AppState>, id: &str, request: Json<UpdateRequest>) -> Re
     .expect("Object update failed");
 
     Ok(Json::from(UpdateResponse {
-        version: Version(1),
+        version: 1,
         location: request.location,
         object_id: id.as_simple().to_string()
     }))
@@ -215,7 +207,7 @@ fn delete(state: &State<AppState>, id: &str) -> Result<Json<DeleteResponse>,NotF
     }
 
     Ok(Json::from(DeleteResponse {
-        version: Version(1),
+        version: 1,
         object_id: id.as_simple().to_string()
     }))
 }
@@ -249,7 +241,7 @@ mod test {
         let client = Client::tracked(rocket())
         .expect("valid rocket instance");
         let req = CreateRequest {
-            version: Version(1),
+            version: 1,
             object_id: TEST_ID.to_string(),
             location: Vertex3D { x: 0.0, y: 0.0, z: 0.0 },
         };
@@ -260,7 +252,7 @@ mod test {
         assert_eq!(response.status(), Status::Ok);
         assert_eq!(response.content_type().unwrap(), ContentType::JSON);
         assert_eq!(response.into_string().unwrap(), serde_json::to_string(&CreateResponse {
-            version: Version(1),
+            version: 1,
             object_id: TEST_ID.to_string(),
             location: Vertex3D { x: 0.0, y: 0.0, z: 0.0 },
         }).unwrap());
@@ -287,7 +279,7 @@ mod test {
         assert_eq!(response.status(), Status::Ok);
         assert_eq!(response.content_type().unwrap(), ContentType::JSON);
         assert_eq!(response.into_string().unwrap(), serde_json::to_string(&IndexResponse {
-            version: Version(1),
+            version: 1,
             object_ids: Vec::from([TEST_ID.to_string()]),
             search: Shape3D::Sphere {
                 center: Vertex3D { x: 0.0, y: 0.0, z: 0.0 },
@@ -318,7 +310,7 @@ mod test {
         assert_eq!(response.status(), Status::Ok);
         assert_eq!(response.content_type().unwrap(), ContentType::JSON);
         assert_eq!(response.into_string().unwrap(), serde_json::to_string(&ReadResponse {
-            version:Version(1),
+            version:1,
             object_id:TEST_ID.to_string(),
             location: Vertex3D { x: 0.0, y: 0.0, z: 0.0 },
         }).unwrap());
@@ -351,7 +343,7 @@ mod test {
         });
 
         let req = UpdateRequest {
-            version: Version(1),
+            version: 1,
             location: Vertex3D { x: 1.0, y: 1.0, z: 1.0 },
         };
         let client = Client::tracked(r)
@@ -364,7 +356,7 @@ mod test {
         assert_eq!(response.status(), Status::Ok);
         assert_eq!(response.content_type().unwrap(), ContentType::JSON);
         assert_eq!(response.into_string().unwrap(), serde_json::to_string(&UpdateResponse {
-            version:Version(1),
+            version:1,
             object_id:TEST_ID.to_string(),
             location: Vertex3D { x: 1.0, y: 1.0, z: 1.0 },
         }).unwrap());
@@ -392,7 +384,7 @@ mod test {
         assert_eq!(response.status(), Status::Ok);
         assert_eq!(response.content_type().unwrap(), ContentType::JSON);
         assert_eq!(response.into_string().unwrap(), serde_json::to_string(&DeleteResponse {
-            version: Version(1),
+            version: 1,
             object_id: TEST_ID.to_string(),
         }).unwrap());
     }
